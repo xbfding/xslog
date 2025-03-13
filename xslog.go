@@ -12,9 +12,11 @@ import (
 )
 
 type LogConfig struct {
-	LogToConsole bool
-	LogToFile    bool
-	LogFilePath  string
+	LogToConsole    bool
+	LogToFile       bool
+	LogFilePath     string
+	LevelForFile    slog.Level
+	LevelForConsole slog.Level
 }
 
 type Logger struct {
@@ -24,23 +26,35 @@ type Logger struct {
 }
 
 type TxtColoredHandler struct {
-	out io.Writer
-	mu  sync.Mutex
+	out  io.Writer
+	opts *slog.HandlerOptions
+	mu   sync.Mutex
 }
 
-func NewTxtColoredHandler(out io.Writer) *TxtColoredHandler {
-	return &TxtColoredHandler{out: out}
+func NewTxtColoredHandler(out io.Writer, opts *slog.HandlerOptions) *TxtColoredHandler {
+	if opts == nil {
+		opts = &slog.HandlerOptions{}
+	}
+	return &TxtColoredHandler{
+		opts: opts,
+		out:  out,
+	}
 }
 
 func (h *TxtColoredHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	return true
+	// 如果没有设置 Level，则默认启用所有级别
+	if h.opts.Level == nil {
+		return true
+	}
+	// 检查当前级别是否符合配置的级别
+	return level >= h.opts.Level.Level()
 }
 
 func (h *TxtColoredHandler) Handle(ctx context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	levelStr := fmt.Sprintf("\x1b[1;%dm%s\x1b[0m", getLevelColor(r.Level), getLevelName(r))
+	levelStr := fmt.Sprintf("\x1b[%dm%s\x1b[0m", getLevelColor(r.Level), getLevelName(r))
 	//levelStr := fmt.Sprintf("\x1b[1;%dm%s\x1b[0m", levelColor, strings.ToUpper(r.Level.String()))
 
 	//timeStr := r.Time.Format("2006-01-02 15:04:05")
@@ -49,7 +63,7 @@ func (h *TxtColoredHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	var attrs []string
 	r.Attrs(func(a slog.Attr) bool {
-		attrs = append(attrs, fmt.Sprintf("%s=%v", a.Key, a.Value.Any()))
+		attrs = append(attrs, fmt.Sprintf("%v", a.Value.Any()))
 		return true
 	})
 
@@ -103,7 +117,11 @@ func NewLogger(config LogConfig) (*Logger, error) {
 	ml := &Logger{config: config}
 
 	if config.LogToConsole {
-		ml.consoleLogger = slog.New(NewTxtColoredHandler(os.Stdout))
+		consoleLevel := new(slog.LevelVar)
+		consoleLevel.Set(config.LevelForConsole)
+		ml.consoleLogger = slog.New(NewTxtColoredHandler(os.Stdout, &slog.HandlerOptions{
+			Level: consoleLevel,
+		}))
 	}
 
 	if config.LogToFile {
@@ -117,7 +135,11 @@ func NewLogger(config LogConfig) (*Logger, error) {
 		if err != nil {
 			return nil, err
 		}
-		ml.fileLogger = slog.New(slog.NewJSONHandler(file, nil))
+		fileLevel := new(slog.LevelVar)
+		fileLevel.Set(config.LevelForFile)
+		ml.fileLogger = slog.New(slog.NewJSONHandler(file, &slog.HandlerOptions{
+			Level: fileLevel,
+		}))
 	}
 
 	return ml, nil

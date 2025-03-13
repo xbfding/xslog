@@ -8,9 +8,11 @@ import (
 
 func main() {
 	config := xslog.LogConfig{
-		LogToConsole: true,
-		LogToFile:    true,
-		LogFilePath:  "1/2/app.log",
+		LogToConsole:    true,
+		LogToFile:       true,
+		LogFilePath:     "app.log",
+		LevelForFile:    slog.LevelDebug,
+		LevelForConsole: slog.LevelInfo,
 	}
 
 	logger, err := xslog.NewLogger(config)
@@ -19,7 +21,8 @@ func main() {
 		return
 	}
 
-	logger.Info("开始扫描!", slog.Group("data", slog.String("id", "123123")))
+	logger.Info("开始扫描!", slog.Group("data"))
+	logger.Info("开始扫描!", slog.Group("data", slog.String("error", "123123"), slog.String("error1", "11111")))
 	logger.Error("This is an error message", "error", "something went wrong")
 	logger.Warn("This is an error message", "error", "something went wrong")
 	logger.Debug("This is an error message", "error", "something went wrong")
