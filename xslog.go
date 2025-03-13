@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -39,11 +40,12 @@ func (h *TxtColoredHandler) Handle(ctx context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	levelColor := getLevelColor(r.Level)
-	levelStr := fmt.Sprintf("\x1b[%dm[%s]\x1b[0m", levelColor, strings.ToUpper(r.Level.String()[:3]))
+	levelStr := fmt.Sprintf("\x1b[1;%dm%s\x1b[0m", getLevelColor(r.Level), getLevelName(r))
+	//levelStr := fmt.Sprintf("\x1b[1;%dm%s\x1b[0m", levelColor, strings.ToUpper(r.Level.String()))
 
-	timeStr := r.Time.Format("2006-01-02 15:04:05")
-	msg := fmt.Sprintf("%s %s %s", timeStr, levelStr, r.Message)
+	//timeStr := r.Time.Format("2006-01-02 15:04:05")
+	//msg := fmt.Sprintf("%s [%s] %s", timeStr, levelStr, r.Message)
+	msg := fmt.Sprintf("[%s] %s", levelStr, r.Message)
 
 	var attrs []string
 	r.Attrs(func(a slog.Attr) bool {
@@ -70,15 +72,30 @@ func (h *TxtColoredHandler) WithGroup(name string) slog.Handler {
 func getLevelColor(level slog.Level) int {
 	switch level {
 	case slog.LevelDebug:
-		return 36 // Cyan
+		return 35 // Purple
 	case slog.LevelInfo:
-		return 32 // Green
+		return 34 // Blue
 	case slog.LevelWarn:
 		return 33 // Yellow
 	case slog.LevelError:
 		return 31 // Red
 	default:
-		return 0 // Default
+		return 37 // Default White
+	}
+}
+
+func getLevelName(r slog.Record) string {
+	switch r.Level {
+	case slog.LevelDebug:
+		return "DBG"
+	case slog.LevelInfo:
+		return "INF"
+	case slog.LevelWarn:
+		return "WRN"
+	case slog.LevelError:
+		return "ERR"
+	default:
+		return strings.ToUpper(r.Level.String()[:3])
 	}
 }
 
@@ -90,6 +107,12 @@ func NewLogger(config LogConfig) (*Logger, error) {
 	}
 
 	if config.LogToFile {
+		dir, _ := filepath.Split(config.LogFilePath)
+		if len(dir) > 0 {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return nil, err
+			}
+		}
 		file, err := os.OpenFile(config.LogFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			return nil, err
@@ -134,21 +157,4 @@ func (ml *Logger) Debug(msg string, args ...any) {
 	if ml.config.LogToFile {
 		ml.fileLogger.Debug(msg, args...)
 	}
-}
-
-func main() {
-	config := LogConfig{
-		LogToConsole: true,
-		LogToFile:    true,
-		LogFilePath:  "app.log",
-	}
-
-	logger, err := NewLogger(config)
-	if err != nil {
-		fmt.Println("Failed to create logger:", err)
-		return
-	}
-
-	logger.Info("开始扫描!", slog.Group("data", slog.String("id", "123123")))
-	logger.Error("This is an error message", "error", "something went wrong")
 }
